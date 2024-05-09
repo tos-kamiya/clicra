@@ -1,6 +1,6 @@
 # clicra, Command-line Crafter
 
-A command-line tool named `clicra` leverages LLM to generate and analyze command lines based on user-provided tasks and context.
+A command-line tool `clicra` leverages LLM to generate and analyze command lines based on user-provided tasks and context.
 
 ## Installation
 
@@ -30,8 +30,16 @@ clicra [options] task ...
 * `-f/--refer`: Provide a command to execute and use its output as additional context.
 * `-m/--model`: LLM name to use (default: llama3).
 
-Example
+Examples
 
 ```sh
 clicra "Find TODOs in source files" -f "ls"
 ```
+
+```sh
+clicra "Get HDD volume size" -f "lsb_release -a"
+```
+
+## Screenshot
+
+![](imgs/screenshot1.png)

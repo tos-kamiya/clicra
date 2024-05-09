@@ -33,7 +33,7 @@ version = "0.1.0"
 clicra = "clicra:main"
 
 [project.urls]
-Homepage = "https://github.com/tos-kamiya/clicra"
+Souce = "https://github.com/tos-kamiya/clicra"
 
-[tool.setuptools_scm]
-write_to = "clicra/_version.py"
+[tool.setuptools]
+packages = ["clicra"]
