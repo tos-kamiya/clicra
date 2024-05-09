@@ -6,7 +6,6 @@ import subprocess
 import sys
 import threading
 
-from setuptools_scm import get_version
 import pyperclip
 from termcolor import colored
 
@@ -162,7 +161,7 @@ def main() -> None:
         "-v", "--verbose", action="store_true"
     )
     parser.add_argument("--version", action="version",
-                        version=f"%(prog)s {get_version()}")
+                        version=f"%(prog)s {_version}")
     args = parser.parse_args()
 
     if not args.task:
