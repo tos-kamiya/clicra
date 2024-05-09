@@ -19,6 +19,24 @@ import pkg_resources
 _version = pkg_resources.get_distribution('clicra').version
 
 DEFAULT_LLM = "llama3"
+DEFAULT_OUTPUT_MAX_CHARS = 2000
+
+
+def clip_text(text: str, max_chars: int) -> str:
+    if len(text) == 0:
+        return ""
+
+    snip_str = " ...(snip)... "
+
+    newline_pos = text.find("\n")
+    if newline_pos < 0 or newline_pos > max_chars:
+        return text[:max_chars] + snip_str + "\n"
+
+    while newline_pos >= 0:
+        next_newline_pos = text.find("\n", newline_pos + 1)
+        if next_newline_pos < 0 or next_newline_pos > max_chars:
+            return text[:newline_pos + 1] + snip_str + "\n"
+        newline_pos = next_newline_pos
 
 
 def stream_reader(
@@ -99,8 +117,11 @@ def highlight_and_extract_code(text: str) -> Tuple[str, str]:
     return "\n".join(highlighted_lines), "\n".join(code_block)
 
 
-def format_command_generation_prompt(task: str, context: Optional[str]) -> str:
-    p = f"Please provide the command line to accomplish the following task."
+def format_command_generation_prompt(task: str, context: Optional[str], generate_script: bool = False) -> str:
+    if generate_script:
+        p = f"Please provide a script to accomplish the following task."
+    else:
+        p = f"Please provide a command line to accomplish the following task."
     if task:
         p += f"\n## TASK\n{task}\n"
     if context:
@@ -123,14 +144,14 @@ def format_analysis_prompt(code: str, task: Optional[str], context: Optional[str
     return p
 
 
-def build_reference_context(command: str) -> str:
+def build_reference_context(command: str, max_chars: int) -> str:
     context = None
     exit_code, stdout, stderr = do_run_and_capture(command, thru_output=False)
     r = ["```", f"$ {command}"]
     if stdout:
-        r.append(stdout)
+        r.append(clip_text(stdout, max_chars))
     if stderr:
-        r.append(stderr)
+        r.append(clip_text(stderr, max_chars))
     if exit_code != 0:
         r.append(f"EXIT CODE: {exit_code}")
     r.append("```")
@@ -158,6 +179,19 @@ def main() -> None:
         help="LLM name to use.",
     )
     parser.add_argument(
+        "-s",
+        "--script",
+        action="store_true",
+        help="ask to generate a script (instead of a command line).",
+    )
+    parser.add_argument(
+        "-M",
+        "--max-chars",
+        type=int,
+        default=DEFAULT_OUTPUT_MAX_CHARS,
+        help="max characters of command execution results.",
+    )
+    parser.add_argument(
         "-v", "--verbose", action="store_true"
     )
     parser.add_argument("--version", action="version",
@@ -166,6 +200,8 @@ def main() -> None:
 
     if not args.task:
         exit("Error: no task is given. Option `-h` for help.")
+    if args.run and args.script:
+        exit("Error: options --generate-script and --run are mutually exclusive.")
     task = " ".join(args.task)
 
     def chat(prompt: str) -> str:
@@ -175,9 +211,9 @@ def main() -> None:
         )
         return response["message"]["content"]
 
-    context = build_reference_context(args.refer) if args.refer else None
+    context = build_reference_context(args.refer, args.max_chars) if args.refer else None
 
-    p = format_command_generation_prompt(task, context)
+    p = format_command_generation_prompt(task, context, generate_script=args.script)
     if args.verbose:
         for L in p.split("\n"):
             print(colored(L, attrs=["dark"]), file=sys.stderr)
@@ -193,7 +229,10 @@ def main() -> None:
             exit_code, stdout, stderr = do_run_and_capture(code)
             if exit_code != 0:
                 print("\n" + colored("-- DEBUG", "yellow", attrs=["bold"]) + "\n")
-                p = format_analysis_prompt(code, task, context, stdout, stderr)
+                p = format_analysis_prompt(
+                    code, task, context,
+                    clip_text(stdout, args.max_chars), clip_text(stderr, args.max_chars)
+                )
                 if args.verbose:
                     for L in p.split("\n"):
                         print(colored(L, attrs=["dark"]), file=sys.stderr)

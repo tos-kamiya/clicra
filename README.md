@@ -34,9 +34,9 @@ clicra [options] <task>
 
 ### Options
 
+- `-m, --model`: Specifies the LLM to use (default is `llama3`).
 - `-r, --run`: Generates and executes the command without confirmation and analyzes the outcome if there are errors.
 - `-f, --refer`: Executes a specified command and uses its output as additional context to improve the accuracy and relevance of task command generation.
-- `-m, --model`: Specifies the LLM to use (default is `llama3`).
 
 ### Examples
 
@@ -46,14 +46,6 @@ To find source files containing TODO comments, you can provide the output of `ls
 clicra "Find TODOs in source files" -f "ls"
 ```
 
-To get the volume size of an HDD, using the output of `lsb_release -a` provides additional system information, helping to generate the correct command:
-
-```sh
-clicra "Get HDD volume size" -f "lsb_release -a"
-```
-
 ## Screenshots
 
-Here is a screenshot of `clicra` in use:
-
-![](imgs/screenshot1.png)
+![](imgs/screenshot2.png)
