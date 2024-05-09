@@ -1,0 +1,1 @@
+from .clicra import main
