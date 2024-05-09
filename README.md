@@ -1,4 +1,4 @@
-### clicra: Command Line Crafter
+# clicra: Command Line Crafter
 
 `clicra` is a command-line tool that utilizes local large language models (LLMs) to generate and analyze command lines based on tasks provided by users.
 
@@ -24,19 +24,19 @@ pipx uninstall clicra
 
 ## Usage
 
-To run `clicra`, use the following syntax:
+To run `clicra`, provide a description of the task you want to execute as a command-line argument:
 
 ```sh
 clicra [options] <task>
 ```
 
-- `<task>`: Description of the task you want to execute.
-
 ### Options
 
 - `-m, --model`: Specifies the LLM to use (default is `llama3`).
-- `-r, --run`: Generates and executes the command without confirmation and analyzes the outcome if there are errors.
+- `-r, --run`: Generates and executes the command immediately without confirmation, and analyzes the outcome if there are errors (non-zero exit code).
+- `-s, --script`: Generates a script instead of a command.
 - `-f, --refer`: Executes a specified command and uses its output as additional context to improve the accuracy and relevance of task command generation.
+- `-M, --max-chars`: Specifies the maximum number of characters to include from the referred command's output in the prompt (default is `2000`).
 
 ### Examples
 
