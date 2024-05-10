@@ -18,16 +18,19 @@ except ImportError:
 
 
 import pkg_resources
-_version = pkg_resources.get_distribution('clicra').version
+
+_version = pkg_resources.get_distribution("clicra").version
 
 DEFAULT_LLM = "llama3"
 LARGER_LLM = "llama3:70b"
 DEFAULT_OUTPUT_MAX_CHARS = 2000
 
+
 @dataclass
 class Prompting:
     text: str
     extract_last_command: bool
+
 
 PROMPTINGS = {
     "sbs": Prompting(
@@ -40,7 +43,7 @@ PROMPTINGS = {
         """magine three different experts are answering this question. All experts will write down 1 step of their thinking, then share it with the group.
 Then all experts will go on to the next step, etc. If any expert realises they're wrong at any point then they leave.
 
-""", # ref: https://github.com/dave1010/tree-of-thought-prompting
+""",  # ref: https://github.com/dave1010/tree-of-thought-prompting
         True,
     ),
 }
@@ -59,21 +62,17 @@ def clip_text(text: str, max_chars: int) -> str:
     while newline_pos >= 0:
         next_newline_pos = text.find("\n", newline_pos + 1)
         if next_newline_pos < 0 or next_newline_pos > max_chars:
-            return text[:newline_pos + 1] + snip_str + "\n"
+            return text[: newline_pos + 1] + snip_str + "\n"
         newline_pos = next_newline_pos
 
 
-def stream_reader(
-    stream: IO, output: TextIO, output_list: List[str]
-) -> None:
+def stream_reader(stream: IO, output: TextIO, output_list: List[str]) -> None:
     for line in iter(stream.readline, b""):
         line = line.decode("utf-8")
         output_list.append(line)
 
 
-def stream_reader_thru(
-    stream: IO, output: TextIO, output_list: List[str]
-) -> None:
+def stream_reader_thru(stream: IO, output: TextIO, output_list: List[str]) -> None:
     for line in iter(stream.readline, b""):
         line = line.decode("utf-8")
         output_list.append(line)
@@ -84,26 +83,20 @@ def do_run_and_capture(code: str, thru_output=True) -> Tuple[int, str, str]:
     """Run the code and capture the standard out and standard error."""
 
     lines = []
-    for L in code.split('\n'):
+    for L in code.split("\n"):
         if L.startswith("$ "):
             L = L[2:]
         lines.append(L)
 
-    process = subprocess.Popen(
-        ["bash", "-c", "\n".join(lines)], stdout=subprocess.PIPE, stderr=subprocess.PIPE
-    )
+    process = subprocess.Popen(["bash", "-c", "\n".join(lines)], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 
     stdout_list = []
     stderr_list = []
 
     sr = stream_reader_thru if thru_output else stream_reader
 
-    stdout_thread = threading.Thread(
-        target=sr, args=(process.stdout, sys.stdout, stdout_list)
-    )
-    stderr_thread = threading.Thread(
-        target=sr, args=(process.stderr, sys.stderr, stderr_list)
-    )
+    stdout_thread = threading.Thread(target=sr, args=(process.stdout, sys.stdout, stdout_list))
+    stderr_thread = threading.Thread(target=sr, args=(process.stderr, sys.stderr, stderr_list))
 
     stdout_thread.start()
     stderr_thread.start()
@@ -153,7 +146,9 @@ def highlight_and_extract_code(text: str, pickup_the_last: bool = False) -> Tupl
     return "\n".join(highlighted_lines), "\n".join(code_block)
 
 
-def format_command_generation_prompt(task: str, context: Optional[str], generate_script: bool = False, prompting: Optional[str] = None) -> str:
+def format_command_generation_prompt(
+    task: str, context: Optional[str], generate_script: bool = False, prompting: Optional[str] = None
+) -> str:
     pt = PROMPTINGS.get(prompting)
     p = pt.text if pt else ""
     if generate_script:
@@ -167,7 +162,9 @@ def format_command_generation_prompt(task: str, context: Optional[str], generate
     return p
 
 
-def format_analysis_prompt(code: str, task: Optional[str], context: Optional[str], stdout: Optional[str], stderr: Optional[str]) -> str:
+def format_analysis_prompt(
+    code: str, task: Optional[str], context: Optional[str], stdout: Optional[str], stderr: Optional[str]
+) -> str:
     p = f"Analyze the result of the command.\n"
     if task:
         p += f"\n## TASK\n{task}\n"
@@ -198,14 +195,10 @@ def build_reference_context(command: str, max_chars: int) -> str:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(
-        description="Generate command line from task description"
-    )
+    parser = argparse.ArgumentParser(description="Generate command line from task description")
     parser.add_argument("task", nargs="*", help="description of the task to perform")
     g = parser.add_mutually_exclusive_group()
-    g.add_argument(
-        "-r", "--run", action="store_true", help="generate command, run it, and then analyze the result."
-    )
+    g.add_argument("-r", "--run", action="store_true", help="generate command, run it, and then analyze the result.")
     g.add_argument(
         "-s",
         "--script",
@@ -230,16 +223,14 @@ def main() -> None:
         default=DEFAULT_OUTPUT_MAX_CHARS,
         help="max characters of command execution results.",
     )
+    parser.add_argument("-v", "--verbose", action="store_true")
     parser.add_argument(
-        "-v", "--verbose", action="store_true"
-    )
-    parser.add_argument(
-        "-p", "--prompting",
+        "-p",
+        "--prompting",
         choices=["tot", "sbs"],
-        help="prompting (**experimental feature**). `tot` for Tree-of-Thought. `sbs` for Step-by-Step."
+        help="prompting (**experimental feature**). `tot` for Tree-of-Thought. `sbs` for Step-by-Step.",
     )
-    parser.add_argument("--version", action="version",
-                        version=f"%(prog)s {_version}")
+    parser.add_argument("--version", action="version", version=f"%(prog)s {_version}")
     args = parser.parse_args()
 
     if not args.task:
@@ -259,8 +250,9 @@ def main() -> None:
     context = build_reference_context(args.refer, args.max_chars) if args.refer else None
 
     p = format_command_generation_prompt(
-        task, context, 
-        generate_script=args.script, 
+        task,
+        context,
+        generate_script=args.script,
         prompting=args.prompting,
     )
     if args.verbose:
@@ -280,8 +272,7 @@ def main() -> None:
             if exit_code != 0:
                 print("\n" + colored("-- DEBUG", "yellow", attrs=["bold"]) + "\n")
                 p = format_analysis_prompt(
-                    code, task, context,
-                    clip_text(stdout, args.max_chars), clip_text(stderr, args.max_chars)
+                    code, task, context, clip_text(stdout, args.max_chars), clip_text(stderr, args.max_chars)
                 )
                 if args.verbose:
                     for L in p.split("\n"):
