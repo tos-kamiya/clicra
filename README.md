@@ -37,6 +37,7 @@ clicra [options] <task>
 - `-s, --script`: Generates a script instead of a command.
 - `-f, --refer`: Executes a specified command and uses its output as additional context to improve the accuracy and relevance of task command generation.
 - `-M, --max-chars`: Specifies the maximum number of characters to include from the referred command's output in the prompt (default is `2000`).
+- `--tot`: Use Tree-of-Thought prompting. This implicitly specifies the use of a larger model (`llama3:70b`).
 
 ### Examples
 

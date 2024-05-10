@@ -2,6 +2,8 @@ from typing import Tuple, List, Optional
 from typing import IO, TextIO
 
 import argparse
+from dataclasses import dataclass
+import re
 import subprocess
 import sys
 import threading
@@ -19,7 +21,29 @@ import pkg_resources
 _version = pkg_resources.get_distribution('clicra').version
 
 DEFAULT_LLM = "llama3"
+LARGER_LLM = "llama3:70b"
 DEFAULT_OUTPUT_MAX_CHARS = 2000
+
+@dataclass
+class Prompting:
+    text: str
+    extract_last_command: bool
+
+PROMPTINGS = {
+    "sbs": Prompting(
+        """(Let’s work this out in a step by step way to be sure we have the right answer.
+
+""",  # ref: https://arxiv.org/pdf/2211.01910
+        True,
+    ),
+    "tot": Prompting(
+        """magine three different experts are answering this question. All experts will write down 1 step of their thinking, then share it with the group.
+Then all experts will go on to the next step, etc. If any expert realises they're wrong at any point then they leave.
+
+""", # ref: https://github.com/dave1010/tree-of-thought-prompting
+        True,
+    ),
+}
 
 
 def clip_text(text: str, max_chars: int) -> str:
@@ -95,16 +119,23 @@ def do_run_and_capture(code: str, thru_output=True) -> Tuple[int, str, str]:
     return process.returncode, stdout, stderr
 
 
-def highlight_and_extract_code(text: str) -> Tuple[str, str]:
+def highlight_and_extract_code(text: str, pickup_the_last: bool = False) -> Tuple[str, str]:
     """Extract the first code block enclosed by "```" and add highlights to the text."""
 
     lines = text.splitlines()
     in_code_block = False
     highlighted_lines = []
     code_block = []
+    pat_code_block_start = re.compile("^```")
+    pat_code_block_end = re.compile("^```")
+
+    if pickup_the_last:
+        lines = lines[::-1]
+        pat_code_block_start, pat_code_block_end = pat_code_block_end, pat_code_block_start
+
     for line in lines:
         if in_code_block:
-            if line.startswith("```"):
+            if pat_code_block_start.match(line):
                 highlighted_lines.append(line)
                 in_code_block = False
             else:
@@ -112,16 +143,23 @@ def highlight_and_extract_code(text: str) -> Tuple[str, str]:
                 highlighted_lines.append(colored(line, "green", attrs=["bold"]))
         else:
             highlighted_lines.append(line)
-            if not code_block and line.startswith("```"):
+            if not code_block and pat_code_block_end.match(line):
                 in_code_block = True
+
+    if pickup_the_last:
+        highlighted_lines = highlighted_lines[::-1]
+        code_block = code_block[::-1]
+
     return "\n".join(highlighted_lines), "\n".join(code_block)
 
 
-def format_command_generation_prompt(task: str, context: Optional[str], generate_script: bool = False) -> str:
+def format_command_generation_prompt(task: str, context: Optional[str], generate_script: bool = False, prompting: Optional[str] = None) -> str:
+    pt = PROMPTINGS.get(prompting)
+    p = pt.text if pt else ""
     if generate_script:
-        p = f"Please provide a script to accomplish the following task."
+        p += f"Please provide a script to accomplish the following task."
     else:
-        p = f"Please provide a command line to accomplish the following task."
+        p += f"Please provide a command line to accomplish the following task."
     if task:
         p += f"\n## TASK\n{task}\n"
     if context:
@@ -164,8 +202,15 @@ def main() -> None:
         description="Generate command line from task description"
     )
     parser.add_argument("task", nargs="*", help="description of the task to perform")
-    parser.add_argument(
+    g = parser.add_mutually_exclusive_group()
+    g.add_argument(
         "-r", "--run", action="store_true", help="generate command, run it, and then analyze the result."
+    )
+    g.add_argument(
+        "-s",
+        "--script",
+        action="store_true",
+        help="ask to generate a script (instead of a command line).",
     )
     parser.add_argument(
         "-f",
@@ -179,12 +224,6 @@ def main() -> None:
         help="LLM name to use.",
     )
     parser.add_argument(
-        "-s",
-        "--script",
-        action="store_true",
-        help="ask to generate a script (instead of a command line).",
-    )
-    parser.add_argument(
         "-M",
         "--max-chars",
         type=int,
@@ -194,15 +233,21 @@ def main() -> None:
     parser.add_argument(
         "-v", "--verbose", action="store_true"
     )
+    parser.add_argument(
+        "-p", "--prompting",
+        choices=["tot", "sbs"],
+        help="prompting (**experimental feature**). `tot` for Tree-of-Thought. `sbs` for Step-by-Step."
+    )
     parser.add_argument("--version", action="version",
                         version=f"%(prog)s {_version}")
     args = parser.parse_args()
 
     if not args.task:
         exit("Error: no task is given. Option `-h` for help.")
-    if args.run and args.script:
-        exit("Error: options --generate-script and --run are mutually exclusive.")
     task = " ".join(args.task)
+
+    if args.verbose:
+        print(colored(f"Model: {args.model}", attrs=["dark"]) + "\n", file=sys.stderr)
 
     def chat(prompt: str) -> str:
         response = ollama.chat(
@@ -213,13 +258,18 @@ def main() -> None:
 
     context = build_reference_context(args.refer, args.max_chars) if args.refer else None
 
-    p = format_command_generation_prompt(task, context, generate_script=args.script)
+    p = format_command_generation_prompt(
+        task, context, 
+        generate_script=args.script, 
+        prompting=args.prompting,
+    )
     if args.verbose:
         for L in p.split("\n"):
             print(colored(L, attrs=["dark"]), file=sys.stderr)
     command = chat(p)
 
-    highlighted_text, code = highlight_and_extract_code(command)
+    pt = PROMPTINGS.get(args.prompting)
+    highlighted_text, code = highlight_and_extract_code(command, pickup_the_last=pt and pt.extract_last_command)
     print(highlighted_text)
 
     if code:
