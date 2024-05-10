@@ -1,8 +1,7 @@
-from typing import Tuple, List, Optional
+from typing import Dict, Tuple, List, Optional
 from typing import IO, TextIO
 
 import argparse
-from dataclasses import dataclass
 import re
 import subprocess
 import sys
@@ -25,33 +24,20 @@ DEFAULT_LLM = "llama3"
 LARGER_LLM = "llama3:70b"
 DEFAULT_OUTPUT_MAX_CHARS = 2000
 
-
-@dataclass
-class Prompting:
-    text: str
-    extract_last_command: bool
-
-
-PROMPTINGS = {
-    "sbs": Prompting(
-        """(Let’s work this out in a step by step way to be sure we have the right answer.
+PROMPTINGS : Dict[str, str] = {
+    "sbs": """(Let’s work this out in a step by step way to be sure we have the right answer.
 
 """,  # ref: https://arxiv.org/pdf/2211.01910
-        True,
-    ),
-    "tot": Prompting(
-        """magine three different experts are answering this question. All experts will write down 1 step of their thinking, then share it with the group.
+    "tot": """magine three different experts are answering this question. All experts will write down 1 step of their thinking, then share it with the group.
 Then all experts will go on to the next step, etc. If any expert realises they're wrong at any point then they leave.
 
 """,  # ref: https://github.com/dave1010/tree-of-thought-prompting
-        True,
-    ),
 }
 
 
 def clip_text(text: str, max_chars: int) -> str:
     if len(text) == 0:
-        return ""
+        return "\n"
 
     snip_str = " ...(snip)... "
 
@@ -64,6 +50,10 @@ def clip_text(text: str, max_chars: int) -> str:
         if next_newline_pos < 0 or next_newline_pos > max_chars:
             return text[: newline_pos + 1] + snip_str + "\n"
         newline_pos = next_newline_pos
+
+    if not text.endswith("\n"):
+        text = text + "\n"
+    return text
 
 
 def stream_reader(stream: IO, output: TextIO, output_list: List[str]) -> None:
@@ -112,7 +102,7 @@ def do_run_and_capture(code: str, thru_output=True) -> Tuple[int, str, str]:
     return process.returncode, stdout, stderr
 
 
-def highlight_and_extract_code(text: str, pickup_the_last: bool = False) -> Tuple[str, str]:
+def highlight_and_extract_command(text: str) -> Tuple[str, str]:
     """Extract the first code block enclosed by "```" and add highlights to the text."""
 
     lines = text.splitlines()
@@ -121,10 +111,6 @@ def highlight_and_extract_code(text: str, pickup_the_last: bool = False) -> Tupl
     code_block = []
     pat_code_block_start = re.compile("^```")
     pat_code_block_end = re.compile("^```")
-
-    if pickup_the_last:
-        lines = lines[::-1]
-        pat_code_block_start, pat_code_block_end = pat_code_block_end, pat_code_block_start
 
     for line in lines:
         if in_code_block:
@@ -139,18 +125,13 @@ def highlight_and_extract_code(text: str, pickup_the_last: bool = False) -> Tupl
             if not code_block and pat_code_block_end.match(line):
                 in_code_block = True
 
-    if pickup_the_last:
-        highlighted_lines = highlighted_lines[::-1]
-        code_block = code_block[::-1]
-
     return "\n".join(highlighted_lines), "\n".join(code_block)
 
 
 def format_command_generation_prompt(
     task: str, context: Optional[str], generate_script: bool = False, prompting: Optional[str] = None
 ) -> str:
-    pt = PROMPTINGS.get(prompting)
-    p = pt.text if pt else ""
+    p = PROMPTINGS.get(prompting, "") if prompting is not None else ""
     if generate_script:
         p += f"Please provide a script to accomplish the following task."
     else:
@@ -258,21 +239,24 @@ def main() -> None:
     if args.verbose:
         for L in p.split("\n"):
             print(colored(L, attrs=["dark"]), file=sys.stderr)
-    command = chat(p)
+    response = chat(p)
 
-    pt = PROMPTINGS.get(args.prompting)
-    highlighted_text, code = highlight_and_extract_code(command, pickup_the_last=pt and pt.extract_last_command)
+    if args.prompting:
+        highlighted_text = response
+        command = None
+    else:
+        highlighted_text, command = highlight_and_extract_command(response)
     print(highlighted_text)
 
-    if code:
+    if command:
         if args.run:
             ht_run = colored(f"-- RUN", "yellow", attrs=["bold"])
-            print(f"\n{ht_run}: {code}\n")
-            exit_code, stdout, stderr = do_run_and_capture(code)
+            print(f"\n{ht_run}: {command}\n")
+            exit_code, stdout, stderr = do_run_and_capture(command)
             if exit_code != 0:
                 print("\n" + colored("-- DEBUG", "yellow", attrs=["bold"]) + "\n")
                 p = format_analysis_prompt(
-                    code, task, context, clip_text(stdout, args.max_chars), clip_text(stderr, args.max_chars)
+                    command, task, context, clip_text(stdout, args.max_chars), clip_text(stderr, args.max_chars)
                 )
                 if args.verbose:
                     for L in p.split("\n"):
@@ -281,7 +265,7 @@ def main() -> None:
                 print(analysis)
             exit(exit_code)
         else:
-            pyperclip.copy(code)
+            pyperclip.copy(command)
             ht_copied = colored(f"-- COPIED THE HIGHLIGHTED CODE TO CLIPBOARD", "yellow", attrs=["bold"])
             print(f"\n{ht_copied}\n")
 
