@@ -1,4 +1,4 @@
-from typing import Dict, Tuple, List, Optional
+from typing import Callable, Dict, Iterable, Iterator, List, Optional, Tuple
 from typing import IO, TextIO
 
 import argparse
@@ -102,30 +102,29 @@ def do_run_and_capture(code: str, thru_output=True) -> Tuple[int, str, str]:
     return process.returncode, stdout, stderr
 
 
-def highlight_and_extract_command(text: str) -> Tuple[str, str]:
+def highlight_and_extract_command(line_iter: Iterable[str], print_func: Callable[[str], None]) -> Optional[str]:
     """Extract the first code block enclosed by "```" and add highlights to the text."""
 
-    lines = text.splitlines()
     in_code_block = False
-    highlighted_lines = []
     code_block = []
     pat_code_block_start = re.compile("^```")
     pat_code_block_end = re.compile("^```")
 
-    for line in lines:
+    for line in line_iter:
+        line = line.rstrip()
         if in_code_block:
             if pat_code_block_start.match(line):
-                highlighted_lines.append(line)
+                print_func(line)
                 in_code_block = False
             else:
                 code_block.append(line)
-                highlighted_lines.append(colored(line, "green", attrs=["bold"]))
+                print_func(colored(line, "green", attrs=["bold"]))
         else:
-            highlighted_lines.append(line)
+            print_func(line)
             if not code_block and pat_code_block_end.match(line):
                 in_code_block = True
 
-    return "\n".join(highlighted_lines), "\n".join(code_block)
+    return "\n".join(code_block) if code_block else None
 
 
 def format_command_generation_prompt(
@@ -175,6 +174,21 @@ def build_reference_context(command: str, max_chars: int) -> str:
     return context
 
 
+def line_it(stream) -> Iterable[str]:
+    buf = ""
+    for chunk in stream:
+        buf += chunk['message']['content']
+        i = buf.find("\n")
+        while i >= 0:
+            yield buf[:i]
+            buf = buf[i + 1:]
+            i = buf.find("\n")
+    if buf:
+        if buf.endswith("\n"):
+            buf = buf[:-1]
+        yield buf
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Generate command line from task description")
     parser.add_argument("task", nargs="*", help="description of the task to perform")
@@ -221,14 +235,15 @@ def main() -> None:
     if args.verbose:
         print(colored(f"Model: {args.model}", attrs=["dark"]) + "\n", file=sys.stderr)
 
-    def chat(prompt: str) -> str:
-        response = ollama.chat(
-            model=args.model,
-            messages=[{"role": "user", "content": prompt}],
-        )
-        return response["message"]["content"]
-
     context = build_reference_context(args.refer, args.max_chars) if args.refer else None
+
+    def chat_stream_line_iter(p: str) -> Iterator[str]:
+        stream = ollama.chat(
+            model=args.model,
+            messages=[{"role": "user", "content": p}],
+            stream=True,
+        )
+        return line_it(stream)
 
     p = format_command_generation_prompt(
         task,
@@ -239,14 +254,13 @@ def main() -> None:
     if args.verbose:
         for L in p.split("\n"):
             print(colored(L, attrs=["dark"]), file=sys.stderr)
-    response = chat(p)
 
     if args.prompt:
-        highlighted_text = response
+        for L in chat_stream_line_iter(p):
+            print(L)
         command = None
     else:
-        highlighted_text, command = highlight_and_extract_command(response)
-    print(highlighted_text)
+        command = highlight_and_extract_command(chat_stream_line_iter(p), print)
 
     if command:
         if args.run:
@@ -261,8 +275,8 @@ def main() -> None:
                 if args.verbose:
                     for L in p.split("\n"):
                         print(colored(L, attrs=["dark"]), file=sys.stderr)
-                analysis = chat(p)
-                print(analysis)
+                for L in chat_stream_line_iter(p):
+                    print(L)
             exit(exit_code)
         else:
             pyperclip.copy(command)
