@@ -10,6 +10,12 @@
 2. Download the installer from the Download section.
 3. Execute the downloaded installer.
 
+Additionally, run ollama to download the model file llama3:
+
+```sh
+ollama pull llama3
+```
+
 After installing Ollama, you can install `clicra`. Use `pipx`, a package manager for Python applications:
 
 ```sh

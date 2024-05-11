@@ -27,7 +27,7 @@ classifiers = [
     "Programming Language :: Python :: 3.8",
     "Operating System :: POSIX :: Linux",
 ]
-version = "0.2.3"
+version = "0.2.4"
 
 [project.scripts]
 clicra = "clicra:main"
