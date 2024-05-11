@@ -33,11 +33,11 @@ clicra [options] <task>
 ### Options
 
 - `-m, --model`: Specifies the LLM to use (default is `llama3`).
-- `-r, --run`: Generates and executes the command immediately without confirmation, and analyzes the outcome if there are errors (non-zero exit code).
-- `-s, --script`: Generates a script instead of a command.
 - `-f, --refer`: Executes a specified command and uses its output as additional context to improve the accuracy and relevance of task command generation.
 - `-M, --max-chars`: Specifies the maximum number of characters to include from the referred command's output in the prompt (default is `2000`).
-- `--tot`: Use Tree-of-Thought prompting. This implicitly specifies the use of a larger model (`llama3:70b`).
+- `-r, --run`: Instead of copying the generated command to the clipboard, it executes the command immediately without confirmation, and analyzes the outcome if there are errors (non-zero exit code).
+- `-s, --script`: Generates a script instead of a command.
+- `--p, --prompt`: Ask for a prompt to describe the solution (**experimental feature**). `tot` for Tree-of-Thought. `sbs` for Step-by-Step.
 
 ### Examples
 

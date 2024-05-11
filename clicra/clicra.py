@@ -186,6 +186,12 @@ def main() -> None:
         action="store_true",
         help="ask to generate a script (instead of a command line).",
     )
+    g.add_argument(
+        "-p",
+        "--prompt",
+        choices=["tot", "sbs"],
+        help="ask for a prompt to describe the solution (**experimental feature**). `tot` for Tree-of-Thought. `sbs` for Step-by-Step.",
+    )
     parser.add_argument(
         "-f",
         "--refer",
@@ -205,12 +211,6 @@ def main() -> None:
         help="max characters of command execution results.",
     )
     parser.add_argument("-v", "--verbose", action="store_true")
-    parser.add_argument(
-        "-p",
-        "--prompting",
-        choices=["tot", "sbs"],
-        help="prompting (**experimental feature**). `tot` for Tree-of-Thought. `sbs` for Step-by-Step.",
-    )
     parser.add_argument("--version", action="version", version=f"%(prog)s {_version}")
     args = parser.parse_args()
 
@@ -234,14 +234,14 @@ def main() -> None:
         task,
         context,
         generate_script=args.script,
-        prompting=args.prompting,
+        prompting=args.prompt,
     )
     if args.verbose:
         for L in p.split("\n"):
             print(colored(L, attrs=["dark"]), file=sys.stderr)
     response = chat(p)
 
-    if args.prompting:
+    if args.prompt:
         highlighted_text = response
         command = None
     else:
